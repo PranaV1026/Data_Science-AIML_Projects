@@ -235,27 +235,12 @@ def build_similarity_matrix(movies: pd.DataFrame):
     return vectorizer, similarity
 
 
-def resolve_movie_title(movie_name: str, movies: pd.DataFrame) -> str:
-    """Resolve a movie title using exact or partial case-insensitive matching."""
-    normalized_query = movie_name.strip().lower()
-    exact_matches = movies[movies["title"].str.lower() == normalized_query]
-    if not exact_matches.empty:
-        return str(exact_matches.iloc[0]["title"])
-
-    partial_matches = movies[movies["title"].str.lower().str.contains(normalized_query, na=False)]
-    if not partial_matches.empty:
-        return str(partial_matches.iloc[0]["title"])
-
-    sample_titles = movies["title"].dropna().astype(str).head(5).tolist()
-    raise ValueError(
-        f"Movie '{movie_name}' not found in the dataset. Try one of these titles instead: {sample_titles}"
-    )
-
-
 def recommend(movie_name: str, movies: pd.DataFrame, similarity) -> List[str]:
     """Return the top 5 similar movie titles for the provided movie name."""
-    resolved_title = resolve_movie_title(movie_name, movies)
-    matches = movies[movies["title"] == resolved_title]
+    matches = movies[movies["title"].str.lower() == movie_name.lower()]
+    if matches.empty:
+        raise ValueError(f"Movie '{movie_name}' not found in the dataset.")
+
     movie_index = matches.index[0]
     distances = list(enumerate(similarity[movie_index]))
     ranked = sorted(distances, key=lambda item: item[1], reverse=True)
@@ -281,14 +266,9 @@ def main() -> None:
     """Run the movie recommendation workflow and print a sample output."""
     try:
         movies, similarity = build_recommender("titles.csv", "credits.csv")
-        preferred_demo_title = "Avatar"
-        movie_name = preferred_demo_title if any(
-            movies["title"].astype(str).str.lower() == preferred_demo_title.lower()
-        ) else str(movies.iloc[0]["title"])
+        movie_name = "Avatar"
         recommendations = recommend(movie_name, movies, similarity)
 
-        if movie_name != preferred_demo_title:
-            print(f"'{preferred_demo_title}' was not found, so showing recommendations for '{movie_name}' instead.")
         print(f"Top 5 movies similar to '{movie_name}':")
         for title in recommendations:
             print(title)

@@ -1,7 +1,6 @@
 import ast
-import html
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List
 
 import pandas as pd
 import streamlit as st
@@ -9,207 +8,71 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-POSTER_URL = "https://placehold.co/320x480/111111/E50914?text=NETFLIX+STYLE"
+PLACEHOLDER_POSTER = "https://placehold.co/300x450/111111/E50914?text=Movie+Poster"
 TITLE_ALIASES = {"overview": ("overview", "description"), "title": ("title", "name")}
-FAKE_FILTERS = ["2025-2020", "2019-2015", "2014-2010", "2009-2005", "Classics"]
 
 
-st.set_page_config(page_title="🎬 Movie Recommendation System", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="Movie Recommendation System", page_icon="🎬", layout="wide")
 
 
-def inject_css() -> None:
+def apply_netflix_theme() -> None:
     st.markdown(
         """
         <style>
-            :root {
-                --bg: #0f0f0f;
-                --panel: #171717;
-                --panel-soft: rgba(255, 255, 255, 0.04);
-                --text: #f5f5f1;
-                --muted: #b3b3b3;
-                --accent: #e50914;
-                --accent-dark: #b20710;
-                --border: rgba(255, 255, 255, 0.08);
-            }
             .stApp {
-                background:
-                    radial-gradient(circle at top, rgba(229, 9, 20, 0.18), transparent 22%),
-                    linear-gradient(180deg, #0f0f0f 0%, #111111 35%, #0f0f0f 100%);
-                color: var(--text);
+                background: linear-gradient(180deg, #0b0b0b 0%, #141414 45%, #1b1b1b 100%);
+                color: #f5f5f5;
             }
-            header[data-testid="stHeader"],
-            #MainMenu,
-            footer {
-                visibility: hidden;
-            }
-            section[data-testid="stSidebar"] {
-                background: #111111;
-                border-right: 1px solid var(--border);
-            }
-            div.block-container {
-                padding-top: 1.4rem;
-                padding-bottom: 2rem;
-                max-width: 1380px;
-            }
-            .headline {
-                font-size: 3.4rem;
-                font-weight: 900;
-                letter-spacing: -0.04em;
-                color: #ffffff;
-                margin-bottom: 0.35rem;
-                text-align: center;
-            }
-            .headline span {
-                color: var(--accent);
-            }
-            .subheadline {
-                color: var(--muted);
-                font-size: 1.08rem;
-                text-align: center;
-                margin-bottom: 1.5rem;
-            }
-            .filters-row {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.75rem;
-                justify-content: center;
-                margin: 0.5rem 0 1.75rem;
-            }
-            .filter-chip {
-                background: rgba(255,255,255,0.06);
-                color: #f7f7f7;
-                border: 1px solid rgba(255,255,255,0.08);
-                padding: 0.65rem 1rem;
-                border-radius: 999px;
-                font-size: 0.92rem;
-                font-weight: 700;
-                transition: all 0.25s ease;
-            }
-            .filter-chip:hover {
-                transform: translateY(-2px);
-                border-color: rgba(229,9,20,0.45);
-                box-shadow: 0 10px 22px rgba(229,9,20,0.18);
-            }
-            .section-title {
-                font-size: 1.45rem;
+            .main-title {
+                font-size: 3rem;
                 font-weight: 800;
-                color: white;
-                margin: 0.2rem 0 1rem;
+                color: #E50914;
+                margin-bottom: 0;
             }
-            .hero-row,
-            .movie-row {
-                display: flex;
-                gap: 1rem;
-                overflow-x: auto;
-                padding-bottom: 0.35rem;
-                scroll-behavior: smooth;
+            .subtitle {
+                font-size: 1.15rem;
+                color: #d6d6d6;
+                margin-top: 0.25rem;
+                margin-bottom: 2rem;
             }
-            .hero-row::-webkit-scrollbar,
-            .movie-row::-webkit-scrollbar {
-                display: none;
-            }
-            .hero-card,
             .movie-card {
-                position: relative;
-                flex: 0 0 auto;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 18px;
-                overflow: hidden;
-                background: #151515;
-                border: 1px solid rgba(255,255,255,0.08);
-                transition: transform 0.35s ease, box-shadow 0.35s ease;
-                box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
-            }
-            .hero-card {
-                width: 250px;
-                height: 360px;
-            }
-            .movie-card {
-                width: 220px;
-                height: 330px;
-            }
-            .hero-card:hover,
-            .movie-card:hover {
-                transform: translateY(-8px) scale(1.04);
-                box-shadow: 0 22px 45px rgba(0, 0, 0, 0.48);
-            }
-            .hero-card img,
-            .movie-card img {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                display: block;
-            }
-            .overlay {
-                position: absolute;
-                inset: 0;
-                background: linear-gradient(180deg, rgba(0,0,0,0.02) 20%, rgba(0,0,0,0.88) 100%);
-                display: flex;
-                align-items: end;
-                padding: 1rem;
-            }
-            .card-title {
-                color: #fff;
-                font-weight: 800;
-                font-size: 1rem;
-                line-height: 1.3;
-                text-shadow: 0 2px 16px rgba(0,0,0,0.7);
-            }
-            .hero-shell {
-                background: linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 26px;
-                padding: 1.2rem;
-                margin-bottom: 1.75rem;
-                backdrop-filter: blur(8px);
-            }
-            .search-shell {
-                background: rgba(255,255,255,0.03);
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 24px;
-                padding: 1.2rem 1.25rem 0.8rem;
-                margin: 0 auto 1.8rem;
-                max-width: 960px;
-            }
-            .search-caption {
+                padding: 14px;
                 text-align: center;
-                color: var(--muted);
-                margin-bottom: 0.9rem;
-                font-size: 0.98rem;
+                min-height: 100%;
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
             }
-            [data-testid="stTextInputRootElement"] input {
-                background: #161616 !important;
-                color: white !important;
-                border: 1px solid rgba(255,255,255,0.08) !important;
-                border-radius: 999px !important;
-                min-height: 3.2rem !important;
-                padding-left: 1rem !important;
-            }
-            [data-testid="stTextInputRootElement"] input:focus {
-                border-color: rgba(229,9,20,0.65) !important;
-                box-shadow: 0 0 0 1px rgba(229,9,20,0.2) !important;
-            }
-            .stButton > button {
-                width: 100%;
-                min-height: 3.2rem;
-                border-radius: 999px;
-                background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dark) 100%);
-                border: none;
-                color: #fff;
-                font-weight: 800;
-                letter-spacing: 0.01em;
-                box-shadow: 0 12px 24px rgba(229,9,20,0.26);
-            }
-            .stButton > button:hover {
-                transform: translateY(-1px);
-                background: linear-gradient(180deg, #f40d19 0%, var(--accent-dark) 100%);
-                color: #fff;
+            .movie-title {
+                color: #ffffff;
+                font-size: 1rem;
+                font-weight: 700;
+                margin-top: 0.85rem;
+                line-height: 1.4;
             }
             .footer {
                 text-align: center;
-                color: var(--muted);
-                padding: 1.25rem 0 0.35rem;
-                margin-top: 2rem;
-                border-top: 1px solid rgba(255,255,255,0.06);
+                color: #b3b3b3;
+                margin-top: 2.5rem;
+                padding: 1rem 0;
+                border-top: 1px solid rgba(255,255,255,0.08);
+            }
+            .stButton>button {
+                background: #E50914;
+                color: white;
+                border: none;
+                border-radius: 10px;
+                padding: 0.65rem 1.5rem;
+                font-weight: 700;
+                width: 100%;
+            }
+            .stButton>button:hover {
+                background: #b20710;
+                color: white;
+            }
+            [data-testid="stSidebar"] {
+                background: #111111;
             }
         </style>
         """,
@@ -218,8 +81,10 @@ def inject_css() -> None:
 
 
 @st.cache_data(show_spinner=False)
-def load_data(titles_path: str = "titles.csv", credits_path: str = "credits.csv") -> Tuple[pd.DataFrame, pd.DataFrame]:
-    return pd.read_csv(Path(titles_path)), pd.read_csv(Path(credits_path))
+def load_datasets(titles_path: str = "titles.csv", credits_path: str = "credits.csv") -> tuple[pd.DataFrame, pd.DataFrame]:
+    titles = pd.read_csv(Path(titles_path))
+    credits = pd.read_csv(Path(credits_path))
+    return titles, credits
 
 
 def first_available_column(frame: pd.DataFrame, candidates: Iterable[str]) -> pd.Series:
@@ -229,10 +94,7 @@ def first_available_column(frame: pd.DataFrame, candidates: Iterable[str]) -> pd
     raise KeyError(f"Expected one of these columns: {list(candidates)}")
 
 
-def normalize_titles(titles: pd.DataFrame) -> pd.DataFrame:
-    if "id" not in titles.columns:
-        raise KeyError("titles.csv must contain an 'id' column.")
-
+def normalize_titles_dataset(titles: pd.DataFrame) -> pd.DataFrame:
     normalized = pd.DataFrame({"id": titles["id"]})
     normalized["title"] = first_available_column(titles, TITLE_ALIASES["title"])
     normalized["overview"] = first_available_column(titles, TITLE_ALIASES["overview"])
@@ -242,15 +104,12 @@ def normalize_titles(titles: pd.DataFrame) -> pd.DataFrame:
     elif "genre" in titles.columns:
         normalized["genres"] = titles["genre"]
     else:
-        raise KeyError("titles.csv must contain either 'genres' or 'genre'.")
+        raise KeyError("The titles dataset must contain either 'genres' or 'genre'.")
 
     return normalized
 
 
-def aggregate_credits(credits: pd.DataFrame) -> pd.DataFrame:
-    if "id" not in credits.columns or "name" not in credits.columns:
-        raise KeyError("credits.csv must contain 'id' and 'name' columns when cast/crew columns are absent.")
-
+def aggregate_credits_dataset(credits: pd.DataFrame) -> pd.DataFrame:
     working = credits.copy()
     if "role" not in working.columns:
         working["role"] = ""
@@ -270,7 +129,7 @@ def aggregate_credits(credits: pd.DataFrame) -> pd.DataFrame:
 
     cast_agg = (
         cast_rows.groupby("id", sort=False)["name"]
-        .apply(lambda names: [{"name": value} for value in names.dropna().tolist()])
+        .apply(lambda names: [{"name": name} for name in names.dropna().tolist()])
         .rename("cast")
     )
     crew_agg = (
@@ -288,18 +147,16 @@ def aggregate_credits(credits: pd.DataFrame) -> pd.DataFrame:
         .rename("crew")
     )
 
-    normalized = pd.concat([cast_agg, crew_agg], axis=1).reset_index()
-    normalized["cast"] = normalized["cast"].apply(lambda value: value if isinstance(value, list) else [])
-    normalized["crew"] = normalized["crew"].apply(lambda value: value if isinstance(value, list) else [])
-    return normalized[["id", "cast", "crew"]]
+    aggregated = pd.concat([cast_agg, crew_agg], axis=1).reset_index()
+    aggregated["cast"] = aggregated["cast"].apply(lambda value: value if isinstance(value, list) else [])
+    aggregated["crew"] = aggregated["crew"].apply(lambda value: value if isinstance(value, list) else [])
+    return aggregated[["id", "cast", "crew"]]
 
 
-def normalize_credits(credits: pd.DataFrame) -> pd.DataFrame:
-    if "id" not in credits.columns:
-        raise KeyError("credits.csv must contain an 'id' column.")
+def normalize_credits_dataset(credits: pd.DataFrame) -> pd.DataFrame:
     if {"cast", "crew"}.issubset(credits.columns):
         return credits[["id", "cast", "crew"]].copy()
-    return aggregate_credits(credits)
+    return aggregate_credits_dataset(credits)
 
 
 def parse_json_like(value) -> List:
@@ -314,30 +171,34 @@ def parse_json_like(value) -> List:
 
     try:
         parsed = ast.literal_eval(text)
-    except (SyntaxError, ValueError):
-        return [token.strip() for token in text.split(",") if token.strip()]
+    except (ValueError, SyntaxError):
+        return [item.strip() for item in text.split(",") if item.strip()]
 
-    return parsed if isinstance(parsed, list) else [parsed]
+    if isinstance(parsed, list):
+        return parsed
+    return [parsed]
 
 
 def extract_names(items: Iterable, limit: int | None = None) -> List[str]:
-    extracted: List[str] = []
+    names: List[str] = []
     for item in items:
         if isinstance(item, dict):
             value = item.get("name") or item.get("title")
         else:
             value = str(item)
+
         if value:
-            extracted.append(str(value))
-        if limit is not None and len(extracted) >= limit:
-            break
-    return extracted
+            names.append(str(value))
+            if limit is not None and len(names) >= limit:
+                break
+    return names
 
 
 def extract_director(items: Iterable) -> List[str]:
     for item in items:
-        if isinstance(item, dict) and str(item.get("job", "")).strip().lower() == "director" and item.get("name"):
-            return [str(item["name"])]
+        if isinstance(item, dict) and str(item.get("job", "")).strip().lower() == "director":
+            if item.get("name"):
+                return [str(item["name"])]
     return []
 
 
@@ -346,10 +207,10 @@ def normalize_tokens(tokens: Iterable[str]) -> List[str]:
 
 
 @st.cache_data(show_spinner=False)
-def preprocess() -> Tuple[pd.DataFrame, object]:
-    titles, credits = load_data()
-    titles = normalize_titles(titles)
-    credits = normalize_credits(credits)
+def build_recommender(titles_path: str = "titles.csv", credits_path: str = "credits.csv"):
+    titles, credits = load_datasets(titles_path, credits_path)
+    titles = normalize_titles_dataset(titles)
+    credits = normalize_credits_dataset(credits)
 
     movies = titles.merge(credits, on="id", how="inner")
     movies = movies[["title", "overview", "genres", "cast", "crew"]].dropna().copy()
@@ -373,114 +234,78 @@ def preprocess() -> Tuple[pd.DataFrame, object]:
 
 
 def recommend(movie_name: str, movies: pd.DataFrame, similarity) -> List[str]:
-    normalized_name = movie_name.strip().lower()
-    if not normalized_name:
-        raise ValueError("Please enter a movie title.")
+    movie_name = movie_name.strip().lower()
+    if not movie_name:
+        raise ValueError("Please enter or select a movie name.")
 
-    matches = movies[movies["title"].astype(str).str.lower() == normalized_name]
-    if matches.empty:
-        matches = movies[movies["title"].astype(str).str.lower().str.contains(normalized_name, na=False)]
-    if matches.empty:
-        raise ValueError("Movie not found. Try another title from the catalog.")
+    exact_match = movies[movies["title"].str.lower() == movie_name]
+    if exact_match.empty:
+        partial_match = movies[movies["title"].str.lower().str.contains(movie_name, na=False)]
+        if partial_match.empty:
+            raise ValueError("Movie not found. Please try another title from the dataset.")
+        movie_index = partial_match.index[0]
+    else:
+        movie_index = exact_match.index[0]
 
-    movie_index = matches.index[0]
-    ranked = sorted(enumerate(similarity[movie_index]), key=lambda item: item[1], reverse=True)
-    return [movies.iloc[index]["title"] for index, _ in ranked[1:6]]
-
-
-def build_movie_row(titles: List[str], card_class: str = "movie-card") -> str:
-    cards = []
-    for title in titles:
-        safe_title = html.escape(str(title))
-        cards.append(
-            f"""
-            <div class="{card_class}">
-                <img src="{POSTER_URL}" alt="{safe_title}">
-                <div class="overlay">
-                    <div class="card-title">{safe_title}</div>
-                </div>
-            </div>
-            """
-        )
-    row_class = "hero-row" if card_class == "hero-card" else "movie-row"
-    return f'<div class="{row_class}">' + "".join(cards) + "</div>"
+    distances = list(enumerate(similarity[movie_index]))
+    ranked_movies = sorted(distances, key=lambda item: item[1], reverse=True)[1:6]
+    return [movies.iloc[index]["title"] for index, _ in ranked_movies]
 
 
-def render_filters() -> None:
-    chips = "".join(f'<div class="filter-chip">{html.escape(label)}</div>' for label in FAKE_FILTERS)
-    st.markdown(f'<div class="filters-row">{chips}</div>', unsafe_allow_html=True)
+apply_netflix_theme()
 
+st.markdown('<div class="main-title">🎬 Movie Recommendation System</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Get similar movies instantly</div>', unsafe_allow_html=True)
 
-def render_hero(movies: pd.DataFrame) -> None:
-    spotlight_titles = movies["title"].astype(str).head(12).tolist()
-    st.markdown('<div class="hero-shell"><div class="section-title">Trending Now</div>', unsafe_allow_html=True)
-    st.markdown(build_movie_row(spotlight_titles, card_class="hero-card"), unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+with st.sidebar:
+    st.header("About Project")
+    st.write(
+        "This content-based movie recommender uses movie metadata like overview, genres, cast, and director "
+        "to suggest similar titles without calling any external movie API."
+    )
+    st.header("Tech Stack")
+    st.markdown(
+        "- Python\n"
+        "- Pandas\n"
+        "- Scikit-learn\n"
+        "- Streamlit\n"
+        "- CountVectorizer\n"
+        "- Cosine Similarity"
+    )
 
+try:
+    movies, similarity = build_recommender()
+    movie_list = sorted(movies["title"].astype(str).unique().tolist())
 
-def render_recommendations(titles: List[str]) -> None:
-    st.markdown('<div class="section-title">Recommended for You</div>', unsafe_allow_html=True)
-    st.markdown(build_movie_row(titles, card_class="movie-card"), unsafe_allow_html=True)
+    selected_movie = st.selectbox(
+        "Search or select a movie",
+        options=movie_list,
+        index=None,
+        placeholder="Type to search movies...",
+    )
 
+    manual_movie = st.text_input("Or enter movie name manually")
 
-def main() -> None:
-    inject_css()
+    if st.button("Recommend"):
+        movie_query = manual_movie if manual_movie.strip() else (selected_movie or "")
+        with st.spinner("Finding similar movies for you..."):
+            recommendations = recommend(movie_query, movies, similarity)
 
-    st.markdown('<div class="headline"><span>🎬</span> Movie Recommendation System</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subheadline">Get similar movies instantly</div>', unsafe_allow_html=True)
-    render_filters()
+        st.subheader("Recommended for you")
+        columns = st.columns(5)
+        for column, title in zip(columns, recommendations):
+            with column:
+                st.markdown('<div class="movie-card">', unsafe_allow_html=True)
+                st.image(PLACEHOLDER_POSTER, use_container_width=True)
+                st.markdown(f'<div class="movie-title">{title}</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+except FileNotFoundError:
+    st.error("titles.csv or credits.csv was not found. Please place both files in the project folder.")
+except KeyError as error:
+    st.error(f"Dataset schema issue: {error}")
+except ValueError as error:
+    st.error(str(error))
+except Exception as error:
+    st.error(f"Something went wrong: {error}")
 
-    with st.sidebar:
-        st.header("About Project")
-        st.write(
-            "A Netflix-style content-based recommendation app built using local movie metadata only. "
-            "It combines genres, cast, director, and overview text to find similar movies."
-        )
-        st.header("Tech Stack")
-        st.markdown(
-            "- Python\n"
-            "- Pandas\n"
-            "- Scikit-learn\n"
-            "- Streamlit\n"
-            "- CountVectorizer\n"
-            "- Cosine Similarity"
-        )
-
-    try:
-        movies, similarity = preprocess()
-        render_hero(movies)
-
-        st.markdown('<div class="search-shell">', unsafe_allow_html=True)
-        st.markdown('<div class="search-caption">Search the catalog and discover your next binge-worthy title.</div>', unsafe_allow_html=True)
-        left, center, right = st.columns([1.2, 5, 1.4])
-        with center:
-            search_query = st.text_input(
-                label="Movie Search",
-                placeholder="What's your taste?",
-                label_visibility="collapsed",
-            )
-        with right:
-            trigger = st.button("Recommend")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        if trigger:
-            with st.spinner("Curating a premium row of recommendations..."):
-                recommendations = recommend(search_query, movies, similarity)
-            render_recommendations(recommendations)
-        else:
-            starter_titles = movies["title"].astype(str).iloc[12:17].tolist()
-            if starter_titles:
-                render_recommendations(starter_titles)
-
-    except FileNotFoundError:
-        st.error("titles.csv or credits.csv was not found. Please place both files in the project folder.")
-    except (KeyError, ValueError) as error:
-        st.error(str(error))
-    except Exception as error:
-        st.error(f"Something went wrong: {error}")
-
-    st.markdown('<div class="footer">Built with ❤️ using Machine Learning</div>', unsafe_allow_html=True)
-
-
-if __name__ == "__main__":
-    main()
+st.markdown('<div class="footer">Built with ❤️ using Machine Learning</div>', unsafe_allow_html=True)
